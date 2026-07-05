@@ -1,6 +1,6 @@
 # MCP ベースのチャットボット
 
-（日本語 | [中文](README_zh.md) | [English](README.md) | [Tiếng Việt](README_vi.md)）
+（日本語 | [中文](README_zh.md) | [English](README_en.md) | [Tiếng Việt](README.md)）
 
 ## はじめに
 
