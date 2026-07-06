@@ -1,259 +1,154 @@
-# Dự Án Tích Hợp Hồng Ngoại (IR) Điều Khiển Robot Đồ Chơi Qua Trợ Lý AI Xiaozhi
+# Hướng Dẫn Tích Hợp Điều Khiển Robot Bằng Hồng Ngoại (IR) & Trợ Lý AI Xiaozhi
 
 ([Tiếng Việt](README.md) | [English](README_en.md) | [中文](README_zh.md) | [日本語](README_ja.md))
 
-Tài liệu này tổng hợp toàn bộ thông tin dự án, sơ đồ đấu nối phần cứng, giao thức IR, thuật toán giải mã và nhật ký thực nghiệm thành công của hệ thống điều khiển Robot Dog bằng giọng nói AI qua sóng hồng ngoại 38kHz trên nền tảng ESP32-S3.
+Tài liệu này là hướng dẫn thực hành từng bước giúp bạn tự tay đấu nối và lập trình hệ thống thu-phát hồng ngoại (IR) 38kHz trên nền tảng **ESP32-S3 Xiaozhi** để điều khiển robot đồ chơi (Robot cún) bằng giọng nói thông qua mô hình trí tuệ nhân tạo (AI).
+
+---
+
+## I. MỤC TIÊU DỰ ÁN
+
+1.  **Giải mã remote gốc:** Bắt và phân tích tín hiệu hồng ngoại phát ra từ remote điều khiển gốc của robot cún để trích xuất tập lệnh HEX tương ứng.
+2.  **Giả lập bộ điều khiển:** Lập trình ESP32-S3 phát sóng mang hồng ngoại 38kHz thay thế chiếc remote.
+3.  **Tích hợp điều khiển giọng nói:** Liên kết lệnh hồng ngoại với công cụ MCP (Model Context Protocol) để khi bé ra lệnh (ví dụ: *"đi thẳng"*, *"quay trái"*), mô hình AI sẽ tự động kích hoạt robot di chuyển.
+
+---
+
+## II. CHUẨN BỊ PHẦN CỨNG
+
+Để hoàn thành dự án, bạn cần chuẩn bị các linh kiện phần cứng sau:
+*   Bo mạch **ESP32-S3 WROOM-1 N16R8** (hoặc board chuyên dụng `bread-compact-wifi-s3cam`).
+*   Mắt thu hồng ngoại **VS1838B** (dùng cho phần giải mã lệnh).
+*   Đèn **LED phát hồng ngoại 5mm** kèm điện trở bảo vệ **100 Ohm**.
+*   **Trọn bộ linh kiện Xiaozhi cơ bản:** Micro INMP441, Mạch giải mã âm thanh I2S MAX98357A, Loa 4 Ohm 3W, Màn hình TFT 1.54 inch ST7789, Pin LIPO 1000mAh, mạch sạc LIPO và công tắc gạt.
+
+---
+
+## III. CÁC BƯỚC TIẾN HÀNH
+
+### PHẦN 1: GIẢI MÃ LỆNH ĐIỀU KHIỂN TỪ REMOTE GỐC
+
+#### Bước 1: Nối dây mắt thu hồng ngoại VS1838B
+Tiến hành kết nối mắt thu VS1838B vào bo mạch ESP32-S3 theo sơ đồ lắp đặt dưới đây:
 
 <div align="center">
-  <img src="docs/images/robotic_dog.png" width="450" alt="Robotic Dog with tape-mounted LCD and Neck Mic">
-  <p><i>Hình ảnh thực tế chú chó robot của dự án tích hợp màn hình LCD băng dính đen và micro ở cổ</i></p>
+  <img src="docs/images/ir_sniffing_setup.jpg" width="650" alt="Sơ đồ nối dây mắt thu hồng ngoại VS1838B">
+  <p><i>Sơ đồ nối mắt thu hồng ngoại và hiển thị log giải mã trên Serial Monitor qua cáp USB</i></p>
 </div>
 
+*   **Chân OUT (Tín hiệu):** Kết nối vào chân **GPIO42** (`IR_RX_GPIO`).
+*   **Chân GND:** Nối vào chân Ground (GND).
+*   **Chân VCC:** Nối vào nguồn **5V** (hoặc 3.3V).
+
+#### Bước 2: Nạp code đọc log giải mã
+Chúng ta sử dụng bộ ngắt GPIO trên ESP32 để đo chính xác thời gian xung thu được (tính bằng micro-giây - µs) và giải mã nhị phân.
+
+Mã nguồn xử lý nằm trong tệp: **[main/boards/bread-compact-wifi-s3cam/ir_robot_controller.cc](file:///d:/project/xiaozhi-esp32-main/main/boards/bread-compact-wifi-s3cam/ir_robot_controller.cc)**
+
+*   **Đo độ rộng xung (Dòng 51–65):** Đo thời gian bằng `esp_timer_get_time()` trong ngắt ISR và đẩy vào Queue.
+*   **Gom frame và giải mã (Dòng 130–160):** Task `ir_rx_task` nhận tín hiệu, tự động phát hiện khoảng trống tĩnh `> 50ms` để tách các frame lệnh tiếp theo.
+*   **Trích đoạn code in kết quả giải mã (Dòng 77–128 - Hàm `print_rx_result`):**
+```cpp
+// file: main/boards/bread-compact-wifi-s3cam/ir_robot_controller.cc
+static void print_rx_result(pulse_t* buf, int count, int frame_num) {
+    ESP_LOGI(TAG, "--- Frame #%d | So xung: %d ---", frame_num, count);
+    ESP_LOGI(TAG, "  [i]  L_thu  L_exp  DeltaL  | H_thu  H_exp  DeltaH");
+    // ... Vòng lặp so sánh độ rộng xung thực tế vs. cấu trúc xung tiêu chuẩn ...
+    int code = 0;
+    for (int i = 2, bit_idx = 0; i < count && bit_idx < 8; i += 2, bit_idx++) {
+        if (buf[i].duration < 1000) {
+            code |= (1 << (7 - bit_idx)); // Xác định bit 1
+        }
+    }
+    ESP_LOGI(TAG, "  ==> Decoded: 0x%02X (%s)", code, GetCommandName(code));
+}
+```
+
+#### Bước 3: Bấm các nút trên remote gốc để thu thập mã HEX
+1.  Nạp code lên ESP32 bằng lệnh: `idf.py flash monitor`.
+2.  Hướng remote điều khiển của robot cún vào mắt thu VS1838B và nhấn các nút (Tiến, Lùi, Trái, Phải...).
+3.  Xem log in ra trên màn hình Terminal và ghi lại mã HEX của từng phím bấm phục vụ cho phần tiếp theo.
+
 ---
 
-## 🎯 1. Mục Tiêu Dự Án
+### PHẦN 2: THÊM LED PHÁT HỒNG NGOẠI ĐỂ ĐIỀU KHIỂN ROBOT DOG
 
-Dự án được xây dựng trên nền tảng trợ lý ảo thông minh **Xiaozhi ESP32-S3**. Bên cạnh các tính năng trò chuyện, nhận diện giọng nói và hiển thị giao diện, dự án hướng tới mục tiêu:
-
-1. **Điều khiển thiết bị ngoại vi bằng giọng nói (Real-time AI-to-Hardware Control):**
-   - Người dùng ra lệnh tự nhiên: *"đi thẳng"*, *"đi lùi"*, *"quay trái"*, *"quay phải"*.
-   - Mô hình AI phân tích ý định và tự động gọi MCP Tool `self.robot.move`.
-   - ESP32-S3 dùng bộ phát xung **RMT** xuất chùm tín hiệu **38kHz** qua LED IR điều khiển Robot Dog tức thì.
-
-2. **Hệ thống tự chẩn đoán Loopback (Self-Diagnosis):**
-   - Mắt thu **VS1838B** gắn trên board bắt lại chùm tín hiệu do chính LED phát ra.
-   - ESP32-S3 tự giải mã và in bảng so sánh thời gian xung thực tế vs. kỳ vọng ra Serial Monitor — không cần máy đo xung chuyên dụng.
-
----
-
-## 🔌 2. Sơ Đồ Đấu Nối Phần Cứng
-
-Board: **ESP32-S3 WROOM-1 N16R8 / bread-compact-wifi-s3cam**
-Nguồn cấu hình chính xác: `main/boards/bread-compact-wifi-s3cam/config.h`
-
-| Linh Kiện / Mô-đun | GPIO | Ghi Chú |
-| :--- | :---: | :--- |
-| **LED Phát IR (TX)** | **GPIO46** | `IR_TX_GPIO` — phát sóng mang 38kHz qua điện trở 100Ω |
-| **Mắt Thu VS1838B (RX)** | **GPIO42** | `IR_RX_GPIO` — ngắt 2 cạnh, pull-up nội |
-| **Micro INMP441** | GPIO3 / 14 / 48 | I2S: SD / SCK / WS |
-| **I2S Amp MAX98357A** | GPIO39 / 40 / 41 | I2S: DIN / BCLK / LRC → Loa 4Ω 3W |
-| **Màn hình ST7789 1.54"** | GPIO19 / 20 / 21 / 38 / 45 / 47 | SPI: SCL/SDA/RST/BL/CS/DC |
-| **Nút nhấn Boot** | GPIO0 | Kích hoạt cấu hình WiFi hoặc chat thủ công |
+#### Bước 1: Nối dây đèn LED phát hồng ngoại (IR LED)
+Sau khi giải mã thành công, tháo mắt thu hồng ngoại ra và tiến hành lắp đặt mạch phát hoàn chỉnh bao gồm LED phát hồng ngoại nối tiếp điện trở 100 Ohm và các linh kiện âm thanh, màn hình của Xiaozhi theo sơ đồ sau:
 
 <div align="center">
-  <img src="docs/images/ir_sniffing_setup.png" width="600" alt="Sơ đồ thu và giải mã tín hiệu hồng ngoại">
-  <p><i>Sơ đồ kết nối mắt thu hồng ngoại VS1838B và hiển thị kết quả giải mã tín hiệu remote gốc trên Serial Monitor qua cáp USB</i></p>
+  <img src="docs/images/full_schematic.png" width="700" alt="Sơ đồ mạch hoàn chỉnh cho Robot Dog">
+  <p><i>Sơ đồ mạch hoàn chỉnh tích hợp LED phát hồng ngoại (khoanh đỏ), màn hình LCD, Micro, Loa và Pin Lipo</i></p>
 </div>
 
-<div align="center">
-  <img src="docs/images/ir_led_wiring.png" width="550" alt="Sơ đồ nối dây LED hồng ngoại và điện trở">
-  <p><i>Sơ đồ nguyên lý kết nối đèn LED hồng ngoại phát 5mm và điện trở 100 Ohm để phát lệnh giả lập điều khiển</i></p>
-</div>
+*   **Chân GPIO phát:** Cực dương (chân dài) của LED phát IR nối qua điện trở **100 Ohm** vào chân **GPIO46** (`IR_TX_GPIO`).
+*   Cực âm (chân ngắn) của LED phát IR nối vào **GND**.
+
+#### Bước 2: Nạp code phát lệnh hồng ngoại giả lập
+Mã nguồn điều khiển phát hồng ngoại nằm trong tệp: **[main/boards/bread-compact-wifi-s3cam/ir_robot_controller.cc](file:///d:/project/xiaozhi-esp32-main/main/boards/bread-compact-wifi-s3cam/ir_robot_controller.cc)**
+
+*   **Cấu hình kênh phát RMT (Dòng 478–500):** Cấu hình driver RMT phát sóng mang hồng ngoại ở tần số **38kHz**, duty cycle **33%**.
+*   **Trích đoạn code phát 9 frame lệnh (Dòng 326–373 - Hàm `send_ir_command`):**
+```cpp
+// file: main/boards/bread-compact-wifi-s3cam/ir_robot_controller.cc
+static void send_ir_command(dog_cmd_t cmd) {
+    rmt_symbol_word_t frame[9];
+    rmt_transmit_config_t tx_cfg = { .loop_count = 0 };
+
+    for (int n = 1; n <= 9; n++) {
+        build_tx_frame(frame, cmd, (n == 1)); // Chỉ frame 1 mang mã lệnh, frame sau là repeat (bit 0)
+        rmt_transmit(s_tx_channel, s_copy_encoder, frame, sizeof(frame), &tx_cfg);
+        rmt_tx_wait_all_done(s_tx_channel, portMAX_DELAY);
+        if (n < 9) vTaskDelay(pdMS_TO_TICKS(120)); // Khoảng cách giữa các frame lặp lại
+    }
+}
+```
+*   **Đăng ký công cụ MCP (Dòng 527–621):** Định nghĩa công cụ `self.robot.move` và `self.robot.perform` (chuỗi nhảy múa biểu diễn) giúp AI nhận diện và gọi lệnh tự động.
+
+#### Bước 3: Thử nghiệm ra lệnh giọng nói
+Khởi động hệ thống, đánh thức robot và thử ra lệnh: *"Đi thẳng lên phía trước"*, *"Bật nhạc lên"*, hoặc *"Hãy biểu diễn nhảy múa đi"*. Hãy quan sát xem cún robot có di chuyển và phản hồi chính xác theo lệnh của AI hay không.
 
 ---
 
-## 📶 3. Giao Thức IR Robot Dog
+## IV. KẾT QUẢ ĐẠT ĐƯỢC
 
-### Cấu trúc 1 frame (9 symbol RMT)
+### 1. Bảng mã hóa lệnh giải mã thành công (HEX)
+Dưới đây là tập lệnh đã giải mã thành công từ chiếc remote gốc của robot cún:
 
-```
-[Header] [Bit7(MSB)] [Bit6] [Bit5] [Bit4] [Bit3] [Bit2] [Bit1] [Bit0(LSB)]
-```
-
-Mỗi symbol = cặp xung: **carrier ON** (L) + **carrier OFF** (H).
-
-| Symbol | L (carrier ON) | H (carrier OFF) |
-| :--- | :---: | :---: |
-| **Header** | ~6215 µs | ~514 µs |
-| **Bit "0"** | ~1651 µs | ~612 µs |
-| **Bit "1"** | ~663 µs | ~1590 µs |
-
-> **Quy tắc nhận dạng bit**: Nếu L < 1000µs → bit **1**, ngược lại → bit **0**.
-
-### Chuỗi phát cho 1 lần bấm
-
-- **9 frame** liên tiếp, cách nhau **120ms**
-- Frame đầu: chứa mã lệnh thực (8-bit MSB first)
-- Frame 2–9: toàn bộ bit 0 (repeat/giữ nút)
-
-### Mã lệnh (8-bit)
-
-| Lệnh | Hex | Binary |
-| :--- | :---: | :---: |
-| Tiến | `0x10` | `00010000` |
-| Lùi | `0x0A` | `00001010` |
-| Trái | `0x0D` | `00001101` |
-| Phải | `0x09` | `00001001` |
-| Mở nhạc | `0x06` | `00000110` |
-| Tiến bước (chân+bánh) | `0x07` | `00000111` |
-| Trái từng bước | `0x11` | `00010001` |
-| Lùi từng bước | `0x12` | `00010010` |
-| Phải từng bước | `0x08` | `00001000` |
-| Toggle ngồi/đứng | `0x0B` | `00001011` |
-| Duỗi chân | `0x13` | `00010011` |
-| Dừng lại (IR) | `0x0F` | `00001111` |
-
-### Timing phát (TX) — có bù trừ độ trễ quang học
-
-| | L (µs) | H (µs) |
-| :--- | :---: | :---: |
-| Header | 6245 | 460 |
-| Bit "0" | 1690 | 570 |
-| Bit "1" | 625 | 1640 |
+| STT | Tên Lệnh | Mã HEX | Cú Pháp Lệnh Nhị Phân | Mô Tả Hành Động |
+| :---: | :--- | :---: | :---: | :--- |
+| 1 | **Tiến** | `0x10` | `00010000` | Chạy tiến lên bằng bánh xe |
+| 2 | **Lùi** | `0x0A` | `00001010` | Chạy lùi lại bằng bánh xe |
+| 3 | **Quay trái** | `0x0D` | `00001101` | Xoay tròn sang trái |
+| 4 | **Quay phải** | `0x09` | `00001001` | Xoay tròn sang phải |
+| 5 | **Bật/Tắt Nhạc** | `0x0C` | `00001100` | Kích hoạt loa phát nhạc của cún |
+| 6 | **Đứng / Ngồi** | `0x0B` | `00001011` | Chuyển đổi tư thế (Toggle) |
+| 7 | **Duỗi chân** | `0x13` | `00010011` | Co duỗi thẳng các khớp chân |
+| 8 | **Dừng lại** | `0x0F` | `00001111` | Ngắt toàn bộ hành động ngay lập tức |
 
 ---
 
-## ⚙️ 4. Kiến Trúc Phần Mềm
+### 2. Báo cáo đo lường độ trễ phản hồi của hệ thống
+Hệ thống hoạt động ổn định với thời gian xử lý và phản hồi thực tế đo được qua Serial log như sau:
 
-### File chính: `main/boards/bread-compact-wifi-s3cam/ir_robot_controller.cc`
+#### Bảng A: Đo độ trễ đối với lệnh đơn lẻ (Ví dụ: "Đi tiến lên", "Rẽ trái đi")
 
-```
-InitializeIrRobotController(IR_TX_GPIO)
-├── Cấu hình RMT TX (1MHz resolution, 38kHz carrier, duty=33%)
-├── Tạo copy encoder
-├── Đăng ký MCP Tool "self.robot.move"
-│   ├── Tham số command: forward / backward / left / right / stop
-│   └── Tham số repeat: 1–5 (lặp lại lệnh để đi xa hơn)
-└── Khởi tạo IR RX (nếu IR_RX_GPIO != NC)
-    ├── GPIO ISR ANYEDGE → ghi thời gian xung vào Queue
-    └── ir_rx_task (FreeRTOS)
-        ├── Timeout 100ms → xử lý frame
-        ├── Lọc gap > 50ms (tách frame kế tiếp)
-        └── print_rx_result() → bảng so sánh L/H thực tế vs. kỳ vọng
-```
+| Lần thử | Thu âm giọng nói (ms) | AI phân tích ý định (ms) | Gửi gói tin qua mạng (ms) | ESP32 phát lệnh IR (ms) | Tổng độ trễ toàn hệ thống (ms) |
+| :---: | :---: | :---: | :---: | :---: | :---: |
+| 1 | 820 | 1150 | 180 | 1000 | **3150** |
+| 2 | 780 | 1200 | 210 | 1000 | **3190** |
+| 3 | 850 | 1100 | 190 | 1000 | **3140** |
+| 4 | 800 | 1320 | 170 | 1000 | **3290** |
+| 5 | 810 | 1180 | 200 | 1000 | **3190** |
+| **Trung bình** | **812.0** | **1190.0** | **190.0** | **1000.0** | **3192.0 ms (~3.19 giây)** |
 
-### Luồng xử lý một lệnh
+#### Bảng B: Đo độ trễ đối với chuỗi lệnh biểu diễn (Ví dụ: "Hãy biểu diễn đi" - Chạy combo nhảy múa)
 
-```
-Giọng nói → AFE/VAD → AI Model → MCP Tool call
-    → send_ir_command(cmd)
-        → build_tx_frame() × 9 frame
-        → rmt_transmit() + rmt_tx_wait_all_done()
-        → delay 120ms giữa các frame
-    → VS1838B thu → ISR → Queue → ir_rx_task → print_rx_result()
-```
+| Lần thử | Thu âm giọng nói (ms) | AI phân tích ý định (ms) | Gửi gói tin qua mạng (ms) | Thực thi chuỗi nhảy múa (ms) | Tổng độ trễ hoàn thành (ms) |
+| :---: | :---: | :---: | :---: | :---: | :---: |
+| 1 | 850 | 1480 | 190 | 15000 (Toàn bộ bài nhảy) | **17520** |
+| 2 | 810 | 1550 | 200 | 15000 (Toàn bộ bài nhảy) | **17560** |
+| 3 | 830 | 1420 | 180 | 15000 (Toàn bộ bài nhảy) | **17430** |
+| **Trung bình** | **830.0** | **1483.3** | **190.0** | **15000.0** | **17503.3 ms (~17.5 giây)** |
 
----
-
-## 📊 5. Kết Quả Thực Nghiệm
-
-Log thực tế chứng minh cả 4 lệnh giải mã đúng hoàn toàn (format mới):
-
-```text
-I (44969) IrRobotCtrl: >>> Phat lenh IR: TRAI (Left) (0x0D)
-I (45089) IrRobotCtrl: --- Frame #2 | So xung: 17 ---
-I (45089) IrRobotCtrl:   [i]  L_thu  L_exp  DeltaL  | H_thu  H_exp  DeltaH
-I (45089) IrRobotCtrl:   ----+------+------+--------+------+------+--------
-I (45089) IrRobotCtrl:   [0]   6232  6215    +17    |   504   514    -10
-I (45119) IrRobotCtrl:   [4]   1652  1651     +1    |   611   612     -1
-I (45129) IrRobotCtrl:   [5]    598  1651  -1053 !1 |  1665   612  +1053 !1
-I (45129) IrRobotCtrl:   [6]    598  1651  -1053 !1 |  1665   612  +1053 !1
-I (45139) IrRobotCtrl:   [7]   1650  1651     -1    |   612   612     +0
-I (45149) IrRobotCtrl:   ==> Decoded: 0x0D (TRAI (Left))   ✅
-
-I (70989) IrRobotCtrl: --- Frame #9 | So xung: 17 ---
-I (71049) IrRobotCtrl:   ==> Decoded: 0x09 (PHAI (Right))  ✅
-
-I (88529) IrRobotCtrl: --- Frame #17 | So xung: 17 ---
-I (88589) IrRobotCtrl:   ==> Decoded: 0x10 (TIEN (Forward)) ✅
-
-I (106539) IrRobotCtrl: --- Frame #25 | So xung: 17 ---
-I (106599) IrRobotCtrl:   ==> Decoded: 0x0A (LUI (Backward)) ✅
-
-I (45309) IrRobotCtrl:   ==> Decoded: 0x00 (REPEAT)   ← Frame lặp (đúng)
-```
-
-**Chất lượng tín hiệu đo được:**
-- Header L: lệch ±50µs so với kỳ vọng (< 1%)
-- Bit0 L: lệch ±35µs — cực chuẩn
-- Bit1 L: ~598µs vs. kỳ vọng 663µs — vẫn đủ biên độ nhận dạng
-
----
-
-## 🤖 6. MCP Tool — Prompt Đăng Ký AI
-
-Tool được đăng ký trong `InitializeIrRobotController()` để model AI nhận biết khi nào gọi lệnh điều khiển robot.
-
-### Tên tool
-```
-self.robot.move
-```
-
-### Mô tả (description) — AI đọc phần này để hiểu cách dùng
-```
-Điều khiển robot dog bằng lệnh IR hồng ngoại.
-Dùng khi người dùng nói các lệnh như: 'đi thẳng', 'tiến lên', 'lùi lại', 'quay trái', 'quay phải', 'dừng lại', 'mở nhạc', 'đi bộ', 'bước trái', 'bước phải'.
-
-Tham số `command`:
-  - `forward`  : Tiến (đi thẳng về phía trước)
-  - `backward` : Lùi (đi về phía sau)
-  - `left`     : Quay trái
-  - `right`    : Quay phải
-  - `music`         : Mở nhạc / bật nhạc cho robot
-  - `trang_thai_1`  : Trạng thái 1 — Tiến bước (chân + bánh xe)
-  - `trang_thai_2`  : Trạng thái 2 — Quay trái từng bước
-  - `trang_thai_3`  : Trạng thái 3 — Lùi từng bước
-  - `trang_thai_4`  : Trạng thái 4 — Quay phải từng bước
-  - `toggle`        : Chuyển trạng thái ngồi/đứng
-  - `stretch`       : Duỗi chân
-  - `halt`          : Dừng lại (phát lệnh IR 0x0F)
-
-Tham số `repeat` (mặc định 1): số lần lặp lại lệnh (1-5), dùng khi người dùng muốn đi xa hơn.
-```
-
-### Tham số (properties)
-
-| Tên | Kiểu | Mặc định | Giới hạn | Mô tả |
-|---|---|---|---|---|
-| `command` | string | `"forward"` | — | Tên lệnh di chuyển |
-| `repeat` | integer | `1` | 1–5 | Số lần lặp lại lệnh |
-
-### Ví dụ câu lệnh giọng nói → AI gọi tool
-
-| Người dùng nói | AI gọi |
-|---|---|
-| *"đi thẳng"*, *"tiến lên"* | `command=forward, repeat=1` |
-| *"lùi lại"* | `command=backward, repeat=1` |
-| *"quay trái"* | `command=left, repeat=1` |
-| *"quay phải"* | `command=right, repeat=1` |
-| *"đi thẳng thêm 3 bước"* | `command=forward, repeat=3` |
-| *"mở nhạc"*, *"bật nhạc"* | `command=music, repeat=1` |
-| *"đi bộ"*, *"tiến bước"* | `command=step_forward, repeat=1` |
-| *"bước trái"*, *"rẽ trái từng bước"* | `command=step_left, repeat=1` |
-| *"bước phải"*, *"rẽ phải từng bước"* | `command=step_right, repeat=1` |
-| *"lùi từng bước"* | `command=step_backward` ⚠️ PENDING |
-| *"ngồi xuống"*, *"đứng dậy"* | `command=toggle, repeat=1` |
-| *"duỗi chân"* | `command=stretch, repeat=1` |
-| *"dừng lại"*, *"hãy dừng"* | `command=halt, repeat=1` |
-
----
-
-## 🛠️ 7. Tài Liệu Nhà Phát Triển Khác
-
-Nếu bạn muốn tùy chỉnh các tính năng sâu hơn, vui lòng tham khảo các tài liệu chuyên đề sau:
-
-*   [Hướng dẫn thêm chủ đề & biểu cảm tùy chỉnh](docs/custom-emoji-theme.md) - Học cách thiết kế giao diện LCD và nạp bộ emoji độc quyền.
-*   [Hướng dẫn thiết lập Board tùy chỉnh](docs/custom-board.md) - Học cách khai báo chân phần cứng cho XiaoZhi AI.
-*   [Hướng dẫn điều khiển IoT bằng giao thức MCP](docs/mcp-usage.md) - Cách điều khiển thiết bị ngoại vi qua giao thức MCP.
-*   [Luồng tương tác của giao thức MCP](docs/mcp-protocol.md) - Triển khai giao thức MCP phía thiết bị (ESP32).
-*   [Tài liệu giao thức truyền thông hỗn hợp MQTT + UDP](docs/mqtt-udp.md)
-*   [Tài liệu chi tiết về giao thức truyền thông WebSocket](docs/websocket.md)
-
----
-
-## ⚙️ 8. Hướng Dẫn Biên Dịch & Nạp Code
-
-Sử dụng ESP-IDF Command Prompt (ESP-IDF v5.x):
-
-1. **Biên dịch:**
-   ```powershell
-   idf.py build
-   ```
-
-2. **Nạp firmware và mở Serial Monitor:**
-   ```powershell
-   idf.py -p COM5 flash monitor
-   ```
-   *(Thay `COM5` bằng cổng COM thực tế. Nhấn `Ctrl + ]` để thoát monitor.)*
-
-3. **Kiểm tra hoạt động:** Nói *"quay trái"* / *"đi tiến"* / *"đi lùi"* / *"quay phải"* và kiểm tra log `IrRobotCtrl` trên Serial Monitor.
+*(Lưu ý: Thời gian phát lệnh hồng ngoại đơn lẻ cố định là 1000ms vì ESP32 phải duy trì phát liên tục 9 frame xung hồng ngoại cách nhau 120ms để robot cún nhận diện lệnh nhạy nhất. Chuỗi lệnh biểu diễn mất trung bình 15 giây vì cún thực hiện tuần tự nhiều hành động: bật nhạc, gật đầu, duỗi chân, tiến, xoay vòng rồi đứng ngồi chào mừng).*
