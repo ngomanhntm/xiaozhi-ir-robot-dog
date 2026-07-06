@@ -41,8 +41,13 @@ Nguồn cấu hình chính xác: `main/boards/bread-compact-wifi-s3cam/config.h`
 | **Nút nhấn Boot** | GPIO0 | Kích hoạt cấu hình WiFi hoặc chat thủ công |
 
 <div align="center">
+  <img src="docs/images/ir_sniffing_setup.png" width="600" alt="Sơ đồ thu và giải mã tín hiệu hồng ngoại">
+  <p><i>Sơ đồ kết nối mắt thu hồng ngoại VS1838B và hiển thị kết quả giải mã tín hiệu remote gốc trên Serial Monitor qua cáp USB</i></p>
+</div>
+
+<div align="center">
   <img src="docs/images/ir_led_wiring.png" width="550" alt="Sơ đồ nối dây LED hồng ngoại và điện trở">
-  <p><i>Sơ đồ nguyên lý kết nối đèn LED hồng ngoại phát 5mm và điện trở 100 Ohm vào chân GPIO phát của ESP32</i></p>
+  <p><i>Sơ đồ nguyên lý kết nối đèn LED hồng ngoại phát 5mm và điện trở 100 Ohm để phát lệnh giả lập điều khiển</i></p>
 </div>
 
 ---
