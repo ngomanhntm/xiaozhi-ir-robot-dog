@@ -1,176 +1,254 @@
-# Chatbot Trợ Lý Ảo Sử Dụng Giao Thức MCP
+# Dự Án Tích Hợp Hồng Ngoại (IR) Điều Khiển Robot Đồ Chơi Qua Trợ Lý AI Xiaozhi
 
-(Tiếng Việt | [English](README_en.md) | [中文](README_zh.md) | [日本語](README_ja.md))
+([Tiếng Việt](README.md) | [English](README_en.md) | [中文](README_zh.md) | [日本語](README_ja.md))
 
-## Giới thiệu
+Tài liệu này tổng hợp toàn bộ thông tin dự án, sơ đồ đấu nối phần cứng, giao thức IR, thuật toán giải mã và nhật ký thực nghiệm thành công của hệ thống điều khiển Robot Dog bằng giọng nói AI qua sóng hồng ngoại 38kHz trên nền tảng ESP32-S3.
 
-👉 [Video demo: Cho AI xem camera vs phản ứng của AI khi phát hiện chủ nhân 3 ngày chưa gội đầu【bilibili】](https://www.bilibili.com/video/BV1bpjgzKEhd/)
-
-👉 [Video hướng dẫn chế tạo bạn gái ảo AI cho người mới bắt đầu【bilibili】](https://www.bilibili.com/video/BV1XnmFYLEJN/)
-
-Là một thiết bị tương tác giọng nói đầu cuối, chatbot AI XiaoZhi (Tiểu Trí) tận dụng sức mạnh trí tuệ nhân tạo của các mô hình ngôn ngữ lớn như Qwen / DeepSeek, đồng thời đạt được khả năng điều khiển đa thiết bị thông qua giao thức MCP (Model Context Protocol).
-
-<img src="docs/mcp-based-graph.jpg" alt="Điều khiển mọi thứ qua MCP" width="320">
-
-## Lưu ý về Phiên bản
-
-Phiên bản v2 hiện tại không tương thích với bảng phân vùng (partition table) của phiên bản v1, do đó không thể nâng cấp từ v1 lên v2 thông qua OTA. Để biết chi tiết về bảng phân vùng, vui lòng xem [partitions/v2/README.md](partitions/v2/README.md).
-
-Tất cả các phần cứng đang chạy v1 đều có thể nâng cấp lên v2 bằng cách nạp (flash) firmware thủ công.
-
-Phiên bản ổn định của v1 là 1.9.2. Bạn có thể chuyển sang v1 bằng lệnh `git checkout v1`. Nhánh v1 sẽ được duy trì hỗ trợ cho đến tháng 2 năm 2026.
-
-### Các tính năng đã triển khai
-
-- Kết nối Wi-Fi / ML307 Cat.1 4G
-- Đánh thức bằng giọng nói ngoại tuyến [ESP-SR](https://github.com/espressif/esp-sr)
-- Hỗ trợ hai giao thức truyền thông ([Websocket](docs/websocket.md) hoặc MQTT + UDP)
-- Sử dụng bộ mã hóa âm thanh OPUS (OPUS audio codec)
-- Tương tác giọng nói dựa trên kiến trúc luồng (streaming) ASR + LLM + TTS
-- Nhận diện người nói, xác định ai đang nói [3D Speaker](https://github.com/modelscope/3D-Speaker)
-- Màn hình OLED / LCD, hỗ trợ hiển thị biểu cảm (emoji) sinh động
-- Hiển thị phần trăm pin và quản lý nguồn điện tiêu thụ
-- Hỗ trợ đa ngôn ngữ (Tiếng Trung, Tiếng Anh, Tiếng Nhật)
-- Hỗ trợ các nền tảng chip ESP32-C3, ESP32-S3, ESP32-P4 của Espressif
-- Giao thức MCP phía thiết bị để điều khiển phần cứng (Loa, LED, Động cơ Servo, GPIO, v.v.)
-- Giao thức MCP phía máy chủ để mở rộng năng lượng của mô hình AI (điều khiển nhà thông minh, vận hành máy tính để bàn PC, tìm kiếm kiến thức, gửi email, v.v.)
-- Cho phép tùy chỉnh từ khóa đánh thức, phông chữ, biểu cảm và hình nền chat thông qua công cụ chỉnh sửa trực tuyến trên web ([Custom Assets Generator](https://github.com/78/xiaozhi-assets-generator))
-- **Bộ điều khiển Robot đồ chơi hồng ngoại tùy chỉnh**: Tích hợp bộ phát hồng ngoại (RMT 38kHz) và mắt thu (VS1838B) để điều khiển robot cún di chuyển bằng giọng nói thông qua AI (xem chi tiết tại [README_IR_CONTROL.md](README_IR_CONTROL.md))
-
----
-
-## Phần cứng
-
-### Thực hành tự làm (DIY) trên Breadboard
-
-Xem tài liệu hướng dẫn chi tiết trên Feishu:
-
-👉 ["Bách khoa toàn thư về Chatbot AI XiaoZhi"](https://ccnphfhqs21z.feishu.cn/wiki/F5krwD16viZoF0kKkvDcrZNYnhb?from=from_copylink)
-
-Demo lắp ráp trên breadboard:
-
-![Breadboard Demo](docs/v1/wiring2.jpg)
-
-### Hỗ trợ hơn 70 phần cứng nguồn mở (Danh sách một phần)
-
-- <a href="https://oshwhub.com/li-chuang-kai-fa-ban/li-chuang-shi-zhan-pai-esp32-s3-kai-fa-ban" target="_blank" title="LiChuang ESP32-S3 Development Board">Bảng mạch phát triển LiChuang ESP32-S3</a>
-- <a href="https://github.com/espressif/esp-box" target="_blank" title="Espressif ESP32-S3-BOX3">Espressif ESP32-S3-BOX3</a>
-- <a href="https://docs.m5stack.com/zh_CN/core/CoreS3" target="_blank" title="M5Stack CoreS3">M5Stack CoreS3</a>
-- <a href="https://docs.m5stack.com/en/atom/Atomic%20Echo%20Base" target="_blank" title="AtomS3R + Echo Base">M5Stack AtomS3R + Echo Base</a>
-- <a href="https://gf.bilibili.com/item/detail/1108782064" target="_blank" title="Magic Button 2.4">Magic Button 2.4</a>
-- <a href="https://www.waveshare.net/shop/ESP32-S3-Touch-AMOLED-1.8.htm" target="_blank" title="Waveshare ESP32-S3-Touch-AMOLED-1.8">Waveshare ESP32-S3-Touch-AMOLED-1.8</a>
-- <a href="https://github.com/Xinyuan-LilyGO/T-Circle-S3" target="_blank" title="LILYGO T-Circle-S3">LILYGO T-Circle-S3</a>
-- <a href="https://oshwhub.com/tenclass01/xmini_c3" target="_blank" title="XiaGe Mini C3">XiaGe Mini C3</a>
-- <a href="https://oshwhub.com/movecall/cuican-ai-pendant-lights-up-y" target="_blank" title="Movecall CuiCan ESP32S3">Mặt dây chuyền CuiCan AI</a>
-- <a href="https://github.com/WMnologo/xingzhi-ai" target="_blank" title="WMnologo-Xingzhi-1.54">WMnologo-Xingzhi-1.54TFT</a>
-- <a href="https://www.seeedstudio.com/SenseCAP-Watcher-W1-A-p-5979.html" target="_blank" title="SenseCAP Watcher">SenseCAP Watcher</a>
-- <a href="https://www.bilibili.com/video/BV1BHJtz6E2S/" target="_blank" title="ESP-HI Low Cost Robot Dog">Robot Dog giá rẻ ESP-HI</a>
-
-<div style="display: flex; justify-content: space-between;">
-  <a href="docs/v1/lichuang-s3.jpg" target="_blank">
-    <img src="docs/v1/lichuang-s3.jpg" width="240" />
-  </a>
-  <a href="docs/v1/espbox3.jpg" target="_blank">
-    <img src="docs/v1/espbox3.jpg" width="240" />
-  </a>
-  <a href="docs/v1/m5cores3.jpg" target="_blank">
-    <img src="docs/v1/m5cores3.jpg" width="240" />
-  </a>
-  <a href="docs/v1/atoms3r.jpg" target="_blank">
-    <img src="docs/v1/atoms3r.jpg" width="240" />
-  </a>
-  <a href="docs/v1/magiclick.jpg" target="_blank">
-    <img src="docs/v1/magiclick.jpg" width="240" />
-  </a>
-  <a href="docs/v1/waveshare.jpg" target="_blank">
-    <img src="docs/v1/waveshare.jpg" width="240" />
-  </a>
-  <a href="docs/v1/lilygo-t-circle-s3.jpg" target="_blank">
-    <img src="docs/v1/lilygo-t-circle-s3.jpg" width="240" />
-  </a>
-  <a href="docs/v1/xmini-c3.jpg" target="_blank">
-    <img src="docs/v1/xmini-c3.jpg" width="240" />
-  </a>
-  <a href="docs/v1/movecall-cuican-esp32s3.jpg" target="_blank">
-    <img src="docs/v1/movecall-cuican-esp32s3.jpg" width="240" />
-  </a>
-  <a href="docs/v1/wmnologo_xingzhi_1.54.jpg" target="_blank">
-    <img src="docs/v1/wmnologo_xingzhi_1.54.jpg" width="240" />
-  </a>
-  <a href="docs/v1/sensecap_watcher.jpg" target="_blank">
-    <img src="docs/v1/sensecap_watcher.jpg" width="240" />
-  </a>
-  <a href="docs/v1/esp-hi.jpg" target="_blank">
-    <img src="docs/v1/esp-hi.jpg" width="240" />
-  </a>
+<div align="center">
+  <img src="docs/images/robotic_dog.png" width="450" alt="Robotic Dog with tape-mounted LCD and Neck Mic">
+  <p><i>Hình ảnh thực tế chú chó robot của dự án tích hợp màn hình LCD băng dính đen và micro ở cổ</i></p>
 </div>
 
 ---
 
-## Phần mềm
+## 🎯 1. Mục Tiêu Dự Án
 
-### Nạp Firmware nhanh
+Dự án được xây dựng trên nền tảng trợ lý ảo thông minh **Xiaozhi ESP32-S3**. Bên cạnh các tính năng trò chuyện, nhận diện giọng nói và hiển thị giao diện, dự án hướng tới mục tiêu:
 
-Đối với người mới bắt đầu, khuyến nghị sử dụng các bản build firmware được biên dịch sẵn để nạp trực tiếp mà không cần thiết lập môi trường phát triển code.
+1. **Điều khiển thiết bị ngoại vi bằng giọng nói (Real-time AI-to-Hardware Control):**
+   - Người dùng ra lệnh tự nhiên: *"đi thẳng"*, *"đi lùi"*, *"quay trái"*, *"quay phải"*.
+   - Mô hình AI phân tích ý định và tự động gọi MCP Tool `self.robot.move`.
+   - ESP32-S3 dùng bộ phát xung **RMT** xuất chùm tín hiệu **38kHz** qua LED IR điều khiển Robot Dog tức thì.
 
-Mặc định, firmware sẽ kết nối đến máy chủ chính thức [xiaozhi.me](https://xiaozhi.me). Người dùng cá nhân có thể đăng ký tài khoản để sử dụng miễn phí mô hình AI Qwen thời gian thực.
-
-👉 [Hướng dẫn nạp firmware cho người mới bắt đầu (Tiếng Trung)](https://ccnphfhqs21z.feishu.cn/wiki/Zpz4wXBtdimBrLk25WdcXzxcnNS)
-
-### Môi trường phát triển
-
-- Phần mềm soạn thảo: Cursor hoặc VSCode
-- Cài đặt extension **ESP-IDF**, chọn phiên bản SDK 5.4 trở lên
-- Hệ điều hành khuyến nghị: Linux biên dịch sẽ nhanh hơn và ít gặp lỗi driver hơn Windows
-- Dự án này tuân thủ phong cách lập trình C++ của Google (Google C++ code style), vui lòng đảm bảo tuân thủ khi gửi các thay đổi mã nguồn.
-
-### Tài liệu dành cho lập trình viên
-
-- [Hướng dẫn thiết lập Board tùy chỉnh](docs/custom-board.md) - Học cách khai báo chân phần cứng cho XiaoZhi AI
-- [Hướng dẫn thêm chủ đề & biểu cảm tùy chỉnh](docs/custom-emoji-theme.md) - Học cách thiết kế giao diện LCD và nạp bộ emoji độc quyền
-- [Hướng dẫn điều khiển IoT bằng giao thức MCP](docs/mcp-usage.md) - Cách điều khiển thiết bị ngoại vi qua giao thức MCP
-- [Luồng tương tác của giao thức MCP](docs/mcp-protocol.md) - Triển khai giao thức MCP phía thiết bị (ESP32)
-- [Tài liệu giao thức truyền thông hỗn hợp MQTT + UDP](docs/mqtt-udp.md)
-- [Tài liệu chi tiết về giao thức truyền thông WebSocket](docs/websocket.md)
-- [Hướng dẫn điều khiển Robot bằng hồng ngoại (IR)](README_IR_CONTROL.md) - Chi tiết sơ đồ đấu nối và giao thức phát hồng ngoại 38kHz điều khiển cún robot
+2. **Hệ thống tự chẩn đoán Loopback (Self-Diagnosis):**
+   - Mắt thu **VS1838B** gắn trên board bắt lại chùm tín hiệu do chính LED phát ra.
+   - ESP32-S3 tự giải mã và in bảng so sánh thời gian xung thực tế vs. kỳ vọng ra Serial Monitor — không cần máy đo xung chuyên dụng.
 
 ---
 
-## Cấu hình Mô hình Lớn (LLM)
+## 🔌 2. Sơ Đồ Đấu Nối Phần Cứng
 
-Nếu bạn đã sở hữu thiết bị chatbot AI XiaoZhi và kết nối thành công với máy chủ chính thức, bạn có thể đăng nhập vào trang điều khiển [xiaozhi.me](https://xiaozhi.me) để quản lý cấu hình hệ thống.
+Board: **ESP32-S3 WROOM-1 N16R8 / bread-compact-wifi-s3cam**
+Nguồn cấu hình chính xác: `main/boards/bread-compact-wifi-s3cam/config.h`
 
-👉 [Video hướng dẫn vận hành trang cấu hình (Giao diện cũ)](https://www.bilibili.com/video/BV1jUCUY2EKM/)
+| Linh Kiện / Mô-đun | GPIO | Ghi Chú |
+| :--- | :---: | :--- |
+| **LED Phát IR (TX)** | **GPIO46** | `IR_TX_GPIO` — phát sóng mang 38kHz qua điện trở 100Ω |
+| **Mắt Thu VS1838B (RX)** | **GPIO42** | `IR_RX_GPIO` — ngắt 2 cạnh, pull-up nội |
+| **Micro INMP441** | GPIO3 / 14 / 48 | I2S: SD / SCK / WS |
+| **I2S Amp MAX98357A** | GPIO39 / 40 / 41 | I2S: DIN / BCLK / LRC → Loa 4Ω 3W |
+| **Màn hình ST7789 1.54"** | GPIO19 / 20 / 21 / 38 / 45 / 47 | SPI: SCL/SDA/RST/BL/CS/DC |
+| **Nút nhấn Boot** | GPIO0 | Kích hoạt cấu hình WiFi hoặc chat thủ công |
 
----
-
-## Các dự án nguồn mở liên quan
-
-Để tự triển khai server xử lý AI trên máy tính cá nhân của riêng bạn, vui lòng tham khảo các dự án nguồn mở sau:
-
-- [xinnan-tech/xiaozhi-esp32-server](https://github.com/xinnan-tech/xiaozhi-esp32-server) Server viết bằng Python
-- [joey-zhou/xiaozhi-esp32-server-java](https://github.com/joey-zhou/xiaozhi-esp32-server-java) Server viết bằng Java
-- [AnimeAIChat/xiaozhi-server-go](https://github.com/AnimeAIChat/xiaozhi-server-go) Server viết bằng Golang
-- [hackers365/xiaozhi-esp32-server-golang](https://github.com/hackers365/xiaozhi-esp32-server-golang) Server viết bằng Golang
-
-Các dự án client khác sử dụng chung giao thức truyền thông của XiaoZhi:
-
-- [huangjunsen0406/py-xiaozhi](https://github.com/huangjunsen0406/py-xiaozhi) Client chạy trên Python
-- [TOM88812/xiaozhi-android-client](https://github.com/TOM88812/xiaozhi-android-client) Client chạy trên Android
-- [100askTeam/xiaozhi-linux](http://github.com/100askTeam/xiaozhi-linux) Client chạy trên Linux của đội ngũ 100ask
-- [78/xiaozhi-sf32](https://github.com/78/xiaozhi-sf32) Firmware chip Bluetooth của hãng Tứ Xuyên
-- [QuecPython/solution-xiaozhiAI](https://github.com/QuecPython/solution-xiaozhiAI) Firmware QuecPython của hãng Quectel
-
-Bộ công cụ tạo file Assets tùy chỉnh:
-
-- [78/xiaozhi-assets-generator](https://github.com/78/xiaozhi-assets-generator) Bộ tạo từ khóa đánh thức, phông chữ, biểu cảm và hình nền tùy chỉnh
+<div align="center">
+  <img src="docs/images/ir_led_wiring.png" width="550" alt="Sơ đồ nối dây LED hồng ngoại và điện trở">
+  <p><i>Sơ đồ nguyên lý kết nối đèn LED hồng ngoại phát 5mm và điện trở 100 Ohm vào chân GPIO phát của ESP32</i></p>
+</div>
 
 ---
 
-## Về dự án này
+## 📶 3. Giao Thức IR Robot Dog
 
-Đây là một dự án nguồn mở viết cho ESP32, được phát hành dưới giấy phép **MIT license**, cho phép bất kỳ ai cũng có thể sử dụng hoàn toàn miễn phí, bao gồm cả mục đích thương mại.
+### Cấu trúc 1 frame (9 symbol RMT)
 
-Chúng tôi hy vọng dự án này sẽ giúp ích cho mọi người trong việc tìm hiểu phát triển phần cứng AI và áp dụng nhanh chóng các mô hình ngôn ngữ lớn đang phát triển như vũ bão vào các thiết bị vật lý thực tế.
+```
+[Header] [Bit7(MSB)] [Bit6] [Bit5] [Bit4] [Bit3] [Bit2] [Bit1] [Bit0(LSB)]
+```
 
-Nếu có bất kỳ ý tưởng hoặc đề xuất đóng góp nào, vui lòng mở Issues hoặc tham gia nhóm [Discord](https://discord.gg/C759fGMBcZ) hoặc QQ group: 994694848
+Mỗi symbol = cặp xung: **carrier ON** (L) + **carrier OFF** (H).
+
+| Symbol | L (carrier ON) | H (carrier OFF) |
+| :--- | :---: | :---: |
+| **Header** | ~6215 µs | ~514 µs |
+| **Bit "0"** | ~1651 µs | ~612 µs |
+| **Bit "1"** | ~663 µs | ~1590 µs |
+
+> **Quy tắc nhận dạng bit**: Nếu L < 1000µs → bit **1**, ngược lại → bit **0**.
+
+### Chuỗi phát cho 1 lần bấm
+
+- **9 frame** liên tiếp, cách nhau **120ms**
+- Frame đầu: chứa mã lệnh thực (8-bit MSB first)
+- Frame 2–9: toàn bộ bit 0 (repeat/giữ nút)
+
+### Mã lệnh (8-bit)
+
+| Lệnh | Hex | Binary |
+| :--- | :---: | :---: |
+| Tiến | `0x10` | `00010000` |
+| Lùi | `0x0A` | `00001010` |
+| Trái | `0x0D` | `00001101` |
+| Phải | `0x09` | `00001001` |
+| Mở nhạc | `0x06` | `00000110` |
+| Tiến bước (chân+bánh) | `0x07` | `00000111` |
+| Trái từng bước | `0x11` | `00010001` |
+| Lùi từng bước | `0x12` | `00010010` |
+| Phải từng bước | `0x08` | `00001000` |
+| Toggle ngồi/đứng | `0x0B` | `00001011` |
+| Duỗi chân | `0x13` | `00010011` |
+| Dừng lại (IR) | `0x0F` | `00001111` |
+
+### Timing phát (TX) — có bù trừ độ trễ quang học
+
+| | L (µs) | H (µs) |
+| :--- | :---: | :---: |
+| Header | 6245 | 460 |
+| Bit "0" | 1690 | 570 |
+| Bit "1" | 625 | 1640 |
+
+---
+
+## ⚙️ 4. Kiến Trúc Phần Mềm
+
+### File chính: `main/boards/bread-compact-wifi-s3cam/ir_robot_controller.cc`
+
+```
+InitializeIrRobotController(IR_TX_GPIO)
+├── Cấu hình RMT TX (1MHz resolution, 38kHz carrier, duty=33%)
+├── Tạo copy encoder
+├── Đăng ký MCP Tool "self.robot.move"
+│   ├── Tham số command: forward / backward / left / right / stop
+│   └── Tham số repeat: 1–5 (lặp lại lệnh để đi xa hơn)
+└── Khởi tạo IR RX (nếu IR_RX_GPIO != NC)
+    ├── GPIO ISR ANYEDGE → ghi thời gian xung vào Queue
+    └── ir_rx_task (FreeRTOS)
+        ├── Timeout 100ms → xử lý frame
+        ├── Lọc gap > 50ms (tách frame kế tiếp)
+        └── print_rx_result() → bảng so sánh L/H thực tế vs. kỳ vọng
+```
+
+### Luồng xử lý một lệnh
+
+```
+Giọng nói → AFE/VAD → AI Model → MCP Tool call
+    → send_ir_command(cmd)
+        → build_tx_frame() × 9 frame
+        → rmt_transmit() + rmt_tx_wait_all_done()
+        → delay 120ms giữa các frame
+    → VS1838B thu → ISR → Queue → ir_rx_task → print_rx_result()
+```
+
+---
+
+## 📊 5. Kết Quả Thực Nghiệm
+
+Log thực tế chứng minh cả 4 lệnh giải mã đúng hoàn toàn (format mới):
+
+```text
+I (44969) IrRobotCtrl: >>> Phat lenh IR: TRAI (Left) (0x0D)
+I (45089) IrRobotCtrl: --- Frame #2 | So xung: 17 ---
+I (45089) IrRobotCtrl:   [i]  L_thu  L_exp  DeltaL  | H_thu  H_exp  DeltaH
+I (45089) IrRobotCtrl:   ----+------+------+--------+------+------+--------
+I (45089) IrRobotCtrl:   [0]   6232  6215    +17    |   504   514    -10
+I (45119) IrRobotCtrl:   [4]   1652  1651     +1    |   611   612     -1
+I (45129) IrRobotCtrl:   [5]    598  1651  -1053 !1 |  1665   612  +1053 !1
+I (45129) IrRobotCtrl:   [6]    598  1651  -1053 !1 |  1665   612  +1053 !1
+I (45139) IrRobotCtrl:   [7]   1650  1651     -1    |   612   612     +0
+I (45149) IrRobotCtrl:   ==> Decoded: 0x0D (TRAI (Left))   ✅
+
+I (70989) IrRobotCtrl: --- Frame #9 | So xung: 17 ---
+I (71049) IrRobotCtrl:   ==> Decoded: 0x09 (PHAI (Right))  ✅
+
+I (88529) IrRobotCtrl: --- Frame #17 | So xung: 17 ---
+I (88589) IrRobotCtrl:   ==> Decoded: 0x10 (TIEN (Forward)) ✅
+
+I (106539) IrRobotCtrl: --- Frame #25 | So xung: 17 ---
+I (106599) IrRobotCtrl:   ==> Decoded: 0x0A (LUI (Backward)) ✅
+
+I (45309) IrRobotCtrl:   ==> Decoded: 0x00 (REPEAT)   ← Frame lặp (đúng)
+```
+
+**Chất lượng tín hiệu đo được:**
+- Header L: lệch ±50µs so với kỳ vọng (< 1%)
+- Bit0 L: lệch ±35µs — cực chuẩn
+- Bit1 L: ~598µs vs. kỳ vọng 663µs — vẫn đủ biên độ nhận dạng
+
+---
+
+## 🤖 6. MCP Tool — Prompt Đăng Ký AI
+
+Tool được đăng ký trong `InitializeIrRobotController()` để model AI nhận biết khi nào gọi lệnh điều khiển robot.
+
+### Tên tool
+```
+self.robot.move
+```
+
+### Mô tả (description) — AI đọc phần này để hiểu cách dùng
+```
+Điều khiển robot dog bằng lệnh IR hồng ngoại.
+Dùng khi người dùng nói các lệnh như: 'đi thẳng', 'tiến lên', 'lùi lại', 'quay trái', 'quay phải', 'dừng lại', 'mở nhạc', 'đi bộ', 'bước trái', 'bước phải'.
+
+Tham số `command`:
+  - `forward`  : Tiến (đi thẳng về phía trước)
+  - `backward` : Lùi (đi về phía sau)
+  - `left`     : Quay trái
+  - `right`    : Quay phải
+  - `music`         : Mở nhạc / bật nhạc cho robot
+  - `trang_thai_1`  : Trạng thái 1 — Tiến bước (chân + bánh xe)
+  - `trang_thai_2`  : Trạng thái 2 — Quay trái từng bước
+  - `trang_thai_3`  : Trạng thái 3 — Lùi từng bước
+  - `trang_thai_4`  : Trạng thái 4 — Quay phải từng bước
+  - `toggle`        : Chuyển trạng thái ngồi/đứng
+  - `stretch`       : Duỗi chân
+  - `halt`          : Dừng lại (phát lệnh IR 0x0F)
+
+Tham số `repeat` (mặc định 1): số lần lặp lại lệnh (1-5), dùng khi người dùng muốn đi xa hơn.
+```
+
+### Tham số (properties)
+
+| Tên | Kiểu | Mặc định | Giới hạn | Mô tả |
+|---|---|---|---|---|
+| `command` | string | `"forward"` | — | Tên lệnh di chuyển |
+| `repeat` | integer | `1` | 1–5 | Số lần lặp lại lệnh |
+
+### Ví dụ câu lệnh giọng nói → AI gọi tool
+
+| Người dùng nói | AI gọi |
+|---|---|
+| *"đi thẳng"*, *"tiến lên"* | `command=forward, repeat=1` |
+| *"lùi lại"* | `command=backward, repeat=1` |
+| *"quay trái"* | `command=left, repeat=1` |
+| *"quay phải"* | `command=right, repeat=1` |
+| *"đi thẳng thêm 3 bước"* | `command=forward, repeat=3` |
+| *"mở nhạc"*, *"bật nhạc"* | `command=music, repeat=1` |
+| *"đi bộ"*, *"tiến bước"* | `command=step_forward, repeat=1` |
+| *"bước trái"*, *"rẽ trái từng bước"* | `command=step_left, repeat=1` |
+| *"bước phải"*, *"rẽ phải từng bước"* | `command=step_right, repeat=1` |
+| *"lùi từng bước"* | `command=step_backward` ⚠️ PENDING |
+| *"ngồi xuống"*, *"đứng dậy"* | `command=toggle, repeat=1` |
+| *"duỗi chân"* | `command=stretch, repeat=1` |
+| *"dừng lại"*, *"hãy dừng"* | `command=halt, repeat=1` |
+
+---
+
+## 🛠️ 7. Tài Liệu Nhà Phát Triển Khác
+
+Nếu bạn muốn tùy chỉnh các tính năng sâu hơn, vui lòng tham khảo các tài liệu chuyên đề sau:
+
+*   [Hướng dẫn thêm chủ đề & biểu cảm tùy chỉnh](docs/custom-emoji-theme.md) - Học cách thiết kế giao diện LCD và nạp bộ emoji độc quyền.
+*   [Hướng dẫn thiết lập Board tùy chỉnh](docs/custom-board.md) - Học cách khai báo chân phần cứng cho XiaoZhi AI.
+*   [Hướng dẫn điều khiển IoT bằng giao thức MCP](docs/mcp-usage.md) - Cách điều khiển thiết bị ngoại vi qua giao thức MCP.
+*   [Luồng tương tác của giao thức MCP](docs/mcp-protocol.md) - Triển khai giao thức MCP phía thiết bị (ESP32).
+*   [Tài liệu giao thức truyền thông hỗn hợp MQTT + UDP](docs/mqtt-udp.md)
+*   [Tài liệu chi tiết về giao thức truyền thông WebSocket](docs/websocket.md)
+
+---
+
+## ⚙️ 8. Hướng Dẫn Biên Dịch & Nạp Code
+
+Sử dụng ESP-IDF Command Prompt (ESP-IDF v5.x):
+
+1. **Biên dịch:**
+   ```powershell
+   idf.py build
+   ```
+
+2. **Nạp firmware và mở Serial Monitor:**
+   ```powershell
+   idf.py -p COM5 flash monitor
+   ```
+   *(Thay `COM5` bằng cổng COM thực tế. Nhấn `Ctrl + ]` để thoát monitor.)*
+
+3. **Kiểm tra hoạt động:** Nói *"quay trái"* / *"đi tiến"* / *"đi lùi"* / *"quay phải"* và kiểm tra log `IrRobotCtrl` trên Serial Monitor.
