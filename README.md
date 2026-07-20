@@ -180,6 +180,13 @@ Mỗi phần tử `rmt_symbol_word_t` chứa 4 trường:
 | `i = 6` | Bit 1 | `0` | Sáng 1690 µs, Tắt 570 µs |
 | `i = 7` | Bit 0 | `0` | Sáng 1690 µs, Tắt 570 µs |
 
+Để trực quan, mảng xung `symbols[9]` được phân bổ cụ thể trong bộ nhớ như hình vẽ dưới đây:
+
+<div align="center">
+  <img src="docs/images/ir_symbols_array.png" width="750" alt="Mô phỏng cấu trúc mảng symbols cho mã lệnh CMD_FORWARD">
+  <p><i>Mô phỏng 9 phần tử trong mảng symbols mã hóa cho lệnh đi thẳng (CMD_FORWARD), làm nổi bật bit 4 mang giá trị 1</i></p>
+</div>
+
 ##### Phát ra GPIO bằng RMT
 
 Mảng `symbols` sau khi được `build_tx_frame` ghi đầy đủ sẽ được đưa thẳng cho ngoại vi phần cứng **RMT** của ESP32 để phát ra chân GPIO:
